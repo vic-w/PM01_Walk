@@ -184,7 +184,7 @@ class Pm01WalkEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2
-        self.episode_length_s = 5
+        self.episode_length_s = 50
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
