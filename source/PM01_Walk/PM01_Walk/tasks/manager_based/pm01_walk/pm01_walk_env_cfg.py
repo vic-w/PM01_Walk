@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-import torch
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -57,6 +56,7 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
 # MDP settings
 ##
 
+
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
@@ -75,22 +75,17 @@ class CommandsCfg:
     )
 
 
-
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
-    pass
+
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[".*"],       # ✅ 匹配所有关节
-        scale=1.0,                # 控制缩放
+        joint_names=[".*"],  # ✅ 匹配所有关节
+        scale=1.0,  # 控制缩放
         use_default_offset=True,  # 初始角度为目标角度
     )
-    #joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
 
-def dummy_obs(env, _):
-    """A simple dummy observation that returns zeros."""
-    return torch.zeros((env.num_envs, 1), device=env.device)
 
 @configclass
 class ObservationsCfg:
@@ -100,13 +95,21 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # observation terms (order preserved)
-        # joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-        # joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
-        dummy = ObsTerm(
-            func=dummy_obs,
-            params={"_": None},   # ✅ 必须显式传入 "_"
-        )
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel_body_frame)
+        dof_pos = ObsTerm(func=mdp.dof_pos_rel_to_default)
+        dof_vel = ObsTerm(func=mdp.dof_velocities)
+        actions = ObsTerm(func=mdp.previous_actions, params={"action_name": "joint_pos"})
+        dof_pos_ref_diff = ObsTerm(func=mdp.dof_pos_reference_diff)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel_body_frame)
+        base_euler_xyz = ObsTerm(func=mdp.base_euler_xyz)
+        rand_push_force = ObsTerm(func=mdp.random_push_force, params={"dim": 2})
+        rand_push_torque = ObsTerm(func=mdp.random_push_torque)
+        terrain_frictions = ObsTerm(func=mdp.terrain_friction)
+        body_mass = ObsTerm(func=mdp.body_mass)
+        stance_curve = ObsTerm(func=mdp.stance_curve, params={"num_legs": 2})
+        swing_curve = ObsTerm(func=mdp.swing_curve, params={"num_legs": 2})
+        contact_mask = ObsTerm(func=mdp.contact_mask, params={"num_feet": 2, "threshold": 1.0})
+        height_measurements = ObsTerm(func=mdp.height_measurements, params={"num_samples": 187})
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -119,7 +122,7 @@ class ObservationsCfg:
 @configclass
 class EventCfg:
     """Configuration for events."""
-    pass
+
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -140,30 +143,9 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    pass
 
-    # # (1) Constant running reward
-    # alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    # # (2) Failure penalty
-    # terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # # (3) Primary task: keep pole upright
-    # pole_pos = RewTerm(
-    #     func=mdp.joint_pos_target_l2,
-    #     weight=-1.0,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]), "target": 0.0},
-    # )
-    # # (4) Shaping tasks: lower cart velocity
-    # cart_vel = RewTerm(
-    #     func=mdp.joint_vel_l1,
-    #     weight=-0.01,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"])},
-    # )
-    # # (5) Shaping tasks: lower pole angular velocity
-    # pole_vel = RewTerm(
-    #     func=mdp.joint_vel_l1,
-    #     weight=-0.005,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"])},
-    # )
+    # 暂未启用额外奖励，后续可根据需要扩展
+    pass
 
 
 @configclass
