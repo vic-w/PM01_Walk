@@ -57,6 +57,24 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
 # MDP settings
 ##
 
+@configclass
+class CommandsCfg:
+    """Command specifications for the MDP."""
+
+    base_velocity = mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.02,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=True,
+        ranges=mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+        ),
+    )
+
+
 
 @configclass
 class ActionsCfg:
@@ -102,27 +120,21 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
     pass
+    reset_base = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={"pose_range": {}, "velocity_range": {}},
+    )
 
-    # # reset
-    # reset_cart_position = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]),
-    #         "position_range": (-1.0, -0.8),
-    #         "velocity_range": (-0.0, 0.0),
-    #     },
-    # )
-
-    # reset_pole_position = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]),
-    #         "position_range": (-0.25 * math.pi, -0.15 * math.pi),
-    #         "velocity_range": (-0.0 * math.pi, 0.0 * math.pi),
-    #     },
-    # )
+    reset_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+            "position_range": (-0.01, 0.01),
+            "velocity_range": (-0.0, 0.0),
+        },
+    )
 
 
 @configclass
@@ -160,12 +172,9 @@ class TerminationsCfg:
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    
-    # # (2) Cart out of bounds
-    # cart_out_of_bounds = DoneTerm(
-    #     func=mdp.joint_pos_out_of_manual_limit,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
-    # )
+
+    # (2) Terminate if the robot falls
+    torso_height = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": 0.31})
 
 
 ##

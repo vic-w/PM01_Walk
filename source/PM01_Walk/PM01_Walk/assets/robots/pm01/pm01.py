@@ -34,7 +34,7 @@ PM01_CFG = ArticulationCfg(
     #     ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 2.0), joint_pos={}
+        pos=(0.0, 0.0, 0.9), joint_pos={}
     ),
     # actuators={
     #     # "cart_actuator": ImplicitActuatorCfg(
