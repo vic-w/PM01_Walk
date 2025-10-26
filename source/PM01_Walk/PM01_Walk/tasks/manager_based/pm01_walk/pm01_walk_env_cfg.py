@@ -25,6 +25,7 @@ from . import mdp
 ##
 
 from isaaclab_assets.robots.cartpole import CARTPOLE_CFG  # isort:skip
+from PM01_Walk.assets.robots.pm01.pm01 import PM01_CFG
 
 
 ##
@@ -43,7 +44,7 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
     )
 
     # robot
-    robot: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot: ArticulationCfg = PM01_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # lights
     dome_light = AssetBaseCfg(
@@ -60,8 +61,9 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
+    pass
 
-    joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
+    #joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
 
 def dummy_obs(env, _):
     """A simple dummy observation that returns zeros."""
