@@ -144,8 +144,11 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # 暂未启用额外奖励，后续可根据需要扩展
-    pass
+    command_alignment = RewTerm(
+        func=mdp.base_velocity_command_alignment,
+        params={"asset_cfg": SceneEntityCfg("robot"), "command_name": "base_velocity"},
+        weight=1.0,
+    )
 
 
 @configclass
