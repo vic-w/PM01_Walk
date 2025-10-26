@@ -62,7 +62,12 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
     pass
-
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*"],       # ✅ 匹配所有关节
+        scale=1.0,                # 控制缩放
+        use_default_offset=True,  # 初始角度为目标角度
+    )
     #joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
 
 def dummy_obs(env, _):

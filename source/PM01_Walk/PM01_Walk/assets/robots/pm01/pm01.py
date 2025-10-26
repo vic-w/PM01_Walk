@@ -36,16 +36,24 @@ PM01_CFG = ArticulationCfg(
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 2.0), joint_pos={}
     ),
+    # actuators={
+    #     # "cart_actuator": ImplicitActuatorCfg(
+    #     #     joint_names_expr=["slider_to_cart"],
+    #     #     effort_limit_sim=400.0,
+    #     #     stiffness=0.0,
+    #     #     damping=10.0,
+    #     # ),
+    #     # "pole_actuator": ImplicitActuatorCfg(
+    #     #     joint_names_expr=["cart_to_pole"], effort_limit_sim=400.0, stiffness=0.0, damping=0.0
+    #     # ),
+    # },
     actuators={
-        # "cart_actuator": ImplicitActuatorCfg(
-        #     joint_names_expr=["slider_to_cart"],
-        #     effort_limit_sim=400.0,
-        #     stiffness=0.0,
-        #     damping=10.0,
-        # ),
-        # "pole_actuator": ImplicitActuatorCfg(
-        #     joint_names_expr=["cart_to_pole"], effort_limit_sim=400.0, stiffness=0.0, damping=0.0
-        # ),
-    },
+    "default": ImplicitActuatorCfg(
+        joint_names_expr=[".*"],     # ✅ 匹配全部关节
+        effort_limit_sim=200.0,      # 力矩上限，可稍大点以防漂移
+        stiffness=500.0,             # 高刚度 -> 僵硬
+        damping=5.0,                 # 阻尼 -> 稳定
+    ),
+},
 )
 """Configuration for a simple Cartpole robot."""
