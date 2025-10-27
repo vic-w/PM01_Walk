@@ -237,14 +237,19 @@ def base_velocity_command_alignment(
             lin_vel_b = lin_vel_b.reshape(num_envs, -1)
 
     commanded_xy = _get_command_lin_vel_xy(env, command_name, device, num_envs)
+    #print('commanded_xy:', commanded_xy)
+
+     # 归一化指令速度方向
 
     commanded_norm = torch.linalg.norm(commanded_xy, dim=1, keepdim=True)
     commanded_dir = torch.where(commanded_norm > 1e-6, commanded_xy / commanded_norm, torch.zeros_like(commanded_xy))
 
     actual_xy = lin_vel_b[..., :2]
+    #print('actual_xy before pad:', actual_xy)
     if actual_xy.shape[1] < 2:
         pad = torch.zeros((num_envs, 2 - actual_xy.shape[1]), device=device, dtype=actual_xy.dtype)
         actual_xy = torch.cat((actual_xy, pad), dim=1)
 
     progress = torch.sum(actual_xy * commanded_dir, dim=1)
+    #print('progress:', progress)
     return progress
