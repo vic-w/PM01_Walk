@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import re
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, Optional
+
 import torch
-from typing import TYPE_CHECKING, Any, Mapping
 
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import wrap_to_pi
+
+from .observations import _get_robot_data as _get_robot_data_obs
+from .observations import step_clock_state
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -37,6 +42,12 @@ def _quat_rotate(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
 
 def _quat_rotate_inverse(quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
     return _quat_rotate(_quat_conjugate(quat), vec)
+
+
+def _zeros_for_env(env: Any, count: int, device: Optional[torch.device] = None) -> torch.Tensor:
+    if device is None:
+        device = _as_device(getattr(env, "device", None))
+    return torch.zeros(count, device=device)
 
 
 def _convert_to_tensor(value: Any, device: torch.device) -> torch.Tensor | None:
@@ -528,3 +539,84 @@ def joint_velocity_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torc
         joint_vel = joint_vel.unsqueeze(0)
 
     return torch.sum(torch.square(joint_vel), dim=1)
+
+
+def _find_joint_indices(data: Any, patterns: Iterable[str], device: torch.device) -> Optional[torch.Tensor]:
+    joint_names = getattr(data, "joint_names", None)
+    if isinstance(joint_names, torch.Tensor):
+        try:
+            joint_names = [str(name) for name in joint_names]
+        except Exception:  # noqa: BLE001
+            joint_names = None
+    if joint_names is None:
+        return None
+    indices: set[int] = set()
+    for pattern in patterns:
+        exact_matches = [idx for idx, name in enumerate(joint_names) if name == pattern]
+        if exact_matches:
+            indices.update(exact_matches)
+            continue
+        try:
+            compiled = re.compile(pattern)
+        except re.error:
+            continue
+        for idx, name in enumerate(joint_names):
+            if compiled.search(name):
+                indices.add(idx)
+    if not indices:
+        return None
+    sorted_indices = sorted(indices)
+    return torch.tensor(sorted_indices, device=device, dtype=torch.long)
+
+
+def joint_reference_tracking_l2(env: ManagerBasedRLEnv, params: Optional[Mapping[str, Any]] = None) -> torch.Tensor:
+    data = _get_robot_data_obs(env)
+    if data is None:
+        return _zeros_for_env(env, getattr(env, "num_envs", 1))
+
+    joint_pos = getattr(data, "joint_pos", None)
+    if joint_pos is None:
+        return _zeros_for_env(env, getattr(env, "num_envs", 1))
+    if joint_pos.ndim == 1:
+        joint_pos = joint_pos.unsqueeze(0)
+    device = joint_pos.device
+
+    reference = None
+    if params is not None and params.get("use_step_clock", False):
+        step_params = params.get("step_clock")
+        state = step_clock_state(env, step_params, update=False)
+        if state is not None:
+            reference = state.get("reference")
+    if reference is None:
+        reference = getattr(env, "_pm01_joint_reference", None)
+    if reference is None:
+        return torch.zeros(joint_pos.shape[0], device=device)
+    if reference.ndim == 1:
+        reference = reference.unsqueeze(0)
+    if reference.shape[0] == 1 and joint_pos.shape[0] > 1:
+        reference = reference.expand(joint_pos.shape[0], -1)
+
+    diff = joint_pos - reference
+
+    joint_filters: list[str] = []
+    if params is not None:
+        joint_filters = list(params.get("joint_names") or [])
+        if not joint_filters:
+            asset_cfg = params.get("asset_cfg")
+            if isinstance(asset_cfg, SceneEntityCfg) and asset_cfg.joint_names:
+                joint_filters = list(asset_cfg.joint_names)
+    if joint_filters:
+        indices = _find_joint_indices(data, joint_filters, device)
+        if indices is not None and indices.numel() > 0:
+            diff = torch.index_select(diff, -1, indices)
+
+    if diff.numel() == 0:
+        return torch.zeros(joint_pos.shape[0], device=device)
+
+    sigma = 0.5
+    if params is not None and "sigma" in params:
+        sigma = float(params["sigma"])
+    sigma = max(sigma, 1e-6)
+    normalized = diff / sigma
+    score = torch.exp(-0.5 * normalized.square()).mean(dim=-1)
+    return score

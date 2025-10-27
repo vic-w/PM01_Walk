@@ -19,6 +19,35 @@ from isaaclab.utils import configclass
 
 from . import mdp
 
+
+STEP_CLOCK_LEG_JOINTS = [
+    "j00_hip_pitch_l",
+    "j01_hip_roll_l",
+    "j02_hip_yaw_l",
+    "j03_knee_pitch_l",
+    "j04_ankle_pitch_l",
+    "j05_ankle_roll_l",
+    "j06_hip_pitch_r",
+    "j07_hip_roll_r",
+    "j08_hip_yaw_r",
+    "j09_knee_pitch_r",
+    "j10_ankle_pitch_r",
+    "j11_ankle_roll_r",
+]
+
+
+def build_step_clock_params() -> dict:
+    """生成步态时钟的参数配置。"""
+
+    return {
+        "frequency_range": (1.2, 2.3),
+        "base_frequency": 1.5,
+        "speed_gain": 0.8,
+        "phase_noise": 0.6,
+        "amplitude_scale": 1.0,
+        "inherit_default_parameters": True,
+    }
+
 ##
 # Pre-defined configs
 ##
@@ -102,18 +131,34 @@ class ObservationsCfg:
         dof_pos_ref_diff = ObsTerm(func=mdp.dof_pos_reference_diff)
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel_body_frame)
         base_euler_xyz = ObsTerm(func=mdp.base_euler_xyz)
+        gait_phase = ObsTerm(func=mdp.gait_phase_features)
+        stance_curve = ObsTerm(func=mdp.stance_curve)
+        swing_curve = ObsTerm(func=mdp.swing_curve)
         # rand_push_force = ObsTerm(func=mdp.random_push_force, params={"dim": 2})
         # rand_push_torque = ObsTerm(func=mdp.random_push_torque)
         # terrain_frictions = ObsTerm(func=mdp.terrain_friction)
         # body_mass = ObsTerm(func=mdp.body_mass)
-        # stance_curve = ObsTerm(func=mdp.stance_curve, params={"num_legs": 2})
-        # swing_curve = ObsTerm(func=mdp.swing_curve, params={"num_legs": 2})
         # contact_mask = ObsTerm(func=mdp.contact_mask, params={"num_feet": 2, "threshold": 1.0})
         # height_measurements = ObsTerm(func=mdp.height_measurements, params={"num_samples": 187})
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
             self.concatenate_terms = True
+            self.dof_pos_ref_diff.params = {
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
+            self.gait_phase.params = {"step_clock": build_step_clock_params()}
+            self.stance_curve.params = {
+                "num_legs": 2,
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
+            self.swing_curve.params = {
+                "num_legs": 2,
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
@@ -186,6 +231,17 @@ class RewardsCfg:
         func=mdp.base_height_tracking,
         params={"asset_cfg": SceneEntityCfg("robot"), "target_height": 0.9, "sigma": 0.1},
         weight=0.75,
+    )
+
+    joint_reference_tracking = RewTerm(
+        func=mdp.joint_reference_tracking_l2,
+        params={
+            "joint_names": STEP_CLOCK_LEG_JOINTS,
+            "sigma": 0.35,
+            "use_step_clock": True,
+            "step_clock": build_step_clock_params(),
+        },
+        weight=1.0,
     )
 
     joint_vel_penalty = RewTerm(
