@@ -150,6 +150,36 @@ class RewardsCfg:
         weight=1.0,
     )
 
+    lin_vel_tracking = RewTerm(
+        func=mdp.base_velocity_command_tracking,
+        params={"asset_cfg": SceneEntityCfg("robot"), "command_name": "base_velocity", "sigma": 0.6},
+        weight=1.5,
+    )
+
+    ang_vel_tracking = RewTerm(
+        func=mdp.base_ang_velocity_command_tracking,
+        params={"asset_cfg": SceneEntityCfg("robot"), "command_name": "base_velocity", "sigma": 1.0},
+        weight=0.5,
+    )
+
+    base_upright = RewTerm(
+        func=mdp.base_upright_alignment,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+        weight=1.0,
+    )
+
+    base_height = RewTerm(
+        func=mdp.base_height_tracking,
+        params={"asset_cfg": SceneEntityCfg("robot"), "target_height": 0.9, "sigma": 0.1},
+        weight=0.75,
+    )
+
+    joint_vel_penalty = RewTerm(
+        func=mdp.joint_velocity_l2,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+        weight=-5e-4,
+    )
+
 
 @configclass
 class TerminationsCfg:

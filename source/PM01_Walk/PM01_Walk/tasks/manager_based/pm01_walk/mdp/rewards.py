@@ -52,6 +52,63 @@ def _convert_to_tensor(value: Any, device: torch.device) -> torch.Tensor | None:
     return None
 
 
+def _extract_ang_vel_z(candidate: Any, device: torch.device, num_envs: int) -> torch.Tensor | None:
+    tensor = _convert_to_tensor(candidate, device)
+    if tensor is not None:
+        if tensor.ndim == 0:
+            tensor = tensor.expand(1)
+        if tensor.ndim == 1:
+            if tensor.shape[0] >= 1:
+                tensor = tensor[..., :1]
+            else:
+                return None
+        if tensor.shape[0] == num_envs:
+            return tensor.reshape(num_envs)
+        if tensor.shape[0] == 1:
+            return tensor.reshape(1).expand(num_envs)
+        if num_envs == 1:
+            return tensor.reshape(1)
+        return None
+
+    if isinstance(candidate, Mapping):
+        for key in ("command", "desired_command", "ang_vel", "angular_velocity", "value"):
+            if key in candidate:
+                result = _extract_ang_vel_z(candidate[key], device, num_envs)
+                if result is not None:
+                    return result
+        for key in ("ang_vel_z", "angular_velocity_z", "command_z", "target_ang_vel_z"):
+            if key in candidate:
+                result = _convert_to_tensor(candidate[key], device)
+                if result is not None:
+                    if result.ndim == 0:
+                        result = result.expand(num_envs)
+                    if result.ndim == 1:
+                        if result.shape[0] == 1:
+                            result = result.expand(num_envs)
+                        if result.shape[0] == num_envs:
+                            return result.reshape(num_envs)
+        return None
+
+    for key in ("command", "desired_command", "ang_vel", "angular_velocity", "value"):
+        if hasattr(candidate, key):
+            result = _extract_ang_vel_z(getattr(candidate, key), device, num_envs)
+            if result is not None:
+                return result
+
+    for key in ("ang_vel_z", "angular_velocity_z", "command_z", "target_ang_vel_z"):
+        if hasattr(candidate, key):
+            result = _convert_to_tensor(getattr(candidate, key), device)
+            if result is not None:
+                if result.ndim == 0:
+                    result = result.expand(num_envs)
+                if result.ndim == 1:
+                    if result.shape[0] == 1:
+                        result = result.expand(num_envs)
+                    if result.shape[0] == num_envs:
+                        return result.reshape(num_envs)
+    return None
+
+
 def _extract_lin_vel_xy(candidate: Any, device: torch.device, num_envs: int) -> torch.Tensor | None:
     tensor = _convert_to_tensor(candidate, device)
     if tensor is not None:
@@ -185,6 +242,50 @@ def _get_command_lin_vel_xy(
     return torch.zeros((num_envs, 2), device=device)
 
 
+def _get_command_ang_vel_z(env: ManagerBasedRLEnv, command_name: str, device: torch.device, num_envs: int) -> torch.Tensor:
+    manager = getattr(env, "command_manager", None)
+    if manager is None:
+        return torch.zeros((num_envs,), device=device)
+
+    candidates = []
+    for attr in ("get_command", "get"):
+        if hasattr(manager, attr):
+            getter = getattr(manager, attr)
+            try:
+                candidate = getter(command_name)
+            except TypeError:
+                try:
+                    candidate = getter(name=command_name)
+                except Exception:  # noqa: BLE001
+                    candidate = None
+            except Exception:  # noqa: BLE001
+                candidate = None
+            if candidate is not None:
+                candidates.append(candidate)
+                break
+
+    if not candidates:
+        for attr in ("commands", "data"):
+            container = getattr(manager, attr, None)
+            if isinstance(container, Mapping):
+                candidate = container.get(command_name)
+                if candidate is not None:
+                    candidates.append(candidate)
+                    break
+
+    if not candidates:
+        candidate = getattr(manager, command_name, None)
+        if candidate is not None:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        tensor = _extract_ang_vel_z(candidate, device, num_envs)
+        if tensor is not None:
+            return tensor
+
+    return torch.zeros((num_envs,), device=device)
+
+
 def joint_pos_target_l2(env: ManagerBasedRLEnv, target: float, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize joint position deviation from a target value."""
     # extract the used quantities (to enable type-hinting)
@@ -253,3 +354,169 @@ def base_velocity_command_alignment(
     progress = torch.sum(actual_xy * commanded_dir, dim=1)
     #print('progress:', progress)
     return progress
+
+
+def base_velocity_command_tracking(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    command_name: str = "base_velocity",
+    sigma: float = 0.5,
+) -> torch.Tensor:
+    """鼓励机器人速度幅值贴合指令。"""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    data = getattr(asset, "data", None)
+    device = _as_device(getattr(env, "device", None))
+    num_envs = getattr(env, "num_envs", 1)
+
+    lin_vel_b = torch.zeros((num_envs, 3), device=device)
+    if data is not None:
+        candidate = getattr(data, "root_lin_vel_b", None)
+        if isinstance(candidate, torch.Tensor):
+            lin_vel_b = candidate.to(device=device)
+        else:
+            vel_w = getattr(data, "root_lin_vel_w", None)
+            quat = getattr(data, "root_quat_w", None)
+            if isinstance(vel_w, torch.Tensor) and isinstance(quat, torch.Tensor):
+                lin_vel_b = _quat_rotate_inverse(quat.to(device=device), vel_w.to(device=device))
+
+    if lin_vel_b.ndim == 1:
+        lin_vel_b = lin_vel_b.unsqueeze(0)
+    if lin_vel_b.shape[0] != num_envs:
+        if lin_vel_b.shape[0] == 1:
+            lin_vel_b = lin_vel_b.expand(num_envs, -1)
+        else:
+            lin_vel_b = lin_vel_b.reshape(num_envs, -1)
+
+    commanded_xy = _get_command_lin_vel_xy(env, command_name, device, num_envs)
+    actual_xy = lin_vel_b[..., :2]
+    if actual_xy.shape[1] < 2:
+        pad = torch.zeros((num_envs, 2 - actual_xy.shape[1]), device=device, dtype=actual_xy.dtype)
+        actual_xy = torch.cat((actual_xy, pad), dim=1)
+
+    diff = (actual_xy - commanded_xy) / max(sigma, 1e-6)
+    squared_error = torch.sum(diff * diff, dim=1)
+    return torch.exp(-0.5 * squared_error)
+
+
+def base_ang_velocity_command_tracking(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    command_name: str = "base_velocity",
+    sigma: float = 1.0,
+) -> torch.Tensor:
+    """鼓励机器人绕 Z 轴的角速度跟随指令。"""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    data = getattr(asset, "data", None)
+    device = _as_device(getattr(env, "device", None))
+    num_envs = getattr(env, "num_envs", 1)
+
+    ang_vel_b = torch.zeros((num_envs, 3), device=device)
+    if data is not None:
+        candidate = getattr(data, "root_ang_vel_b", None)
+        if isinstance(candidate, torch.Tensor):
+            ang_vel_b = candidate.to(device=device)
+        else:
+            ang_vel_w = getattr(data, "root_ang_vel_w", None)
+            quat = getattr(data, "root_quat_w", None)
+            if isinstance(ang_vel_w, torch.Tensor) and isinstance(quat, torch.Tensor):
+                ang_vel_b = _quat_rotate_inverse(quat.to(device=device), ang_vel_w.to(device=device))
+
+    if ang_vel_b.ndim == 1:
+        ang_vel_b = ang_vel_b.unsqueeze(0)
+    if ang_vel_b.shape[0] != num_envs:
+        if ang_vel_b.shape[0] == 1:
+            ang_vel_b = ang_vel_b.expand(num_envs, -1)
+        else:
+            ang_vel_b = ang_vel_b.reshape(num_envs, -1)
+
+    commanded_z = _get_command_ang_vel_z(env, command_name, device, num_envs)
+    actual_z = ang_vel_b[..., 2]
+
+    diff = (actual_z - commanded_z) / max(sigma, 1e-6)
+    squared_error = diff * diff
+    return torch.exp(-0.5 * squared_error)
+
+
+def base_upright_alignment(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    up_dir: tuple[float, float, float] = (0.0, 0.0, 1.0),
+) -> torch.Tensor:
+    """奖励机身朝向保持竖直。"""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    data = getattr(asset, "data", None)
+    device = _as_device(getattr(env, "device", None))
+    num_envs = getattr(env, "num_envs", 1)
+
+    if data is None:
+        return torch.zeros((num_envs,), device=device)
+
+    quat = getattr(data, "root_quat_w", None)
+    if not isinstance(quat, torch.Tensor):
+        return torch.zeros((num_envs,), device=device)
+
+    quat = quat.to(device=device)
+    if quat.ndim == 1:
+        quat = quat.unsqueeze(0)
+
+    up_vec = torch.tensor(up_dir, dtype=quat.dtype, device=device)
+    if up_vec.ndim == 1:
+        up_vec = up_vec.expand(quat.shape[0], -1)
+
+    base_up = _quat_rotate(quat, up_vec)
+    alignment = torch.clamp(base_up[..., 2], min=-1.0, max=1.0)
+    return 0.5 * (alignment + 1.0)
+
+
+def base_height_tracking(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    target_height: float = 0.9,
+    sigma: float = 0.08,
+) -> torch.Tensor:
+    """鼓励机身高度保持在目标附近。"""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    data = getattr(asset, "data", None)
+    device = _as_device(getattr(env, "device", None))
+    num_envs = getattr(env, "num_envs", 1)
+
+    if data is None:
+        return torch.zeros((num_envs,), device=device)
+
+    root_pos = getattr(data, "root_pos_w", None)
+    if not isinstance(root_pos, torch.Tensor):
+        return torch.zeros((num_envs,), device=device)
+
+    root_pos = root_pos.to(device=device)
+    if root_pos.ndim == 1:
+        root_pos = root_pos.unsqueeze(0)
+
+    height = root_pos[..., 2]
+    diff = (height - target_height) / max(sigma, 1e-6)
+    return torch.exp(-0.5 * diff * diff)
+
+
+def joint_velocity_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """计算关节速度平方和，用于构建惩罚项。"""
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    data = getattr(asset, "data", None)
+    device = _as_device(getattr(env, "device", None))
+    num_envs = getattr(env, "num_envs", 1)
+
+    if data is None:
+        return torch.zeros((num_envs,), device=device)
+
+    joint_vel = getattr(data, "joint_vel", None)
+    if not isinstance(joint_vel, torch.Tensor):
+        return torch.zeros((num_envs,), device=device)
+
+    joint_vel = joint_vel.to(device=device)
+    if joint_vel.ndim == 1:
+        joint_vel = joint_vel.unsqueeze(0)
+
+    return torch.sum(torch.square(joint_vel), dim=1)
