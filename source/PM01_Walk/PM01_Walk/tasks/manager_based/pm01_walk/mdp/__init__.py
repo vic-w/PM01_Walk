@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from functools import wraps
 from typing import Any, Optional
 
 import torch
@@ -76,6 +77,7 @@ def _summarize_forces(forces: torch.Tensor) -> str:
     )
 
 
+@wraps(_base_velocity_mdp.feet_air_time_positive_biped)
 def feet_air_time_positive_biped(*args: Any, **kwargs: Any):
     """包装原始的脚部腾空时间奖励，并打印接触力调试信息。"""
     sensor_cfg = kwargs.get("sensor_cfg")
