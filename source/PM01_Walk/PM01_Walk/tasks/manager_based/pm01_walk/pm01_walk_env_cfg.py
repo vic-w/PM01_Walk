@@ -167,6 +167,21 @@ class ObservationsCfg:
         def __post_init__(self) -> None:
             self.enable_corruption = False
             self.concatenate_terms = True
+            self.dof_pos_ref_diff.params = {
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
+            self.gait_phase.params = {"step_clock": build_step_clock_params()}
+            self.stance_curve.params = {
+                "num_legs": 2,
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
+            self.swing_curve.params = {
+                "num_legs": 2,
+                "use_step_clock": True,
+                "step_clock": build_step_clock_params(),
+            }
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
