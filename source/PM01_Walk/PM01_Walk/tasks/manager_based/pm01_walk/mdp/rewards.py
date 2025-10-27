@@ -57,6 +57,14 @@ def _extract_ang_vel_z(candidate: Any, device: torch.device, num_envs: int) -> t
     if tensor is not None:
         if tensor.ndim == 0:
             tensor = tensor.expand(1)
+        if tensor.ndim >= 2:
+            # we expect the last dimension to contain the angular velocity
+            # components. Extract the z component (index 2) when possible,
+            # otherwise fall back to the final element of the last dimension.
+            if tensor.shape[-1] >= 3:
+                tensor = tensor[..., 2]
+            else:
+                tensor = tensor[..., -1]
         if tensor.ndim == 1:
             if tensor.shape[0] >= 1:
                 tensor = tensor[..., :1]
