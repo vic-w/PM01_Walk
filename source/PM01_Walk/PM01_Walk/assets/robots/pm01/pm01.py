@@ -51,7 +51,7 @@ PM01_CFG = ArticulationCfg(
     "default": ImplicitActuatorCfg(
         joint_names_expr=[".*"],     # ✅ 匹配全部关节
         effort_limit_sim=200.0,      # 力矩上限，可稍大点以防漂移
-        stiffness=500.0,             # 高刚度 -> 僵硬
+        stiffness=50.0,             # 高刚度 -> 僵硬
         damping=5.0,                 # 阻尼 -> 稳定
     ),
 },
