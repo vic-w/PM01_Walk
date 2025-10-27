@@ -126,7 +126,21 @@ class EventCfg:
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
-        params={"pose_range": {}, "velocity_range": {}},
+        params={
+            "pose_range": {
+                "pos": {
+                    "x": (-0.1, 0.1),
+                    "y": (-0.1, 0.1),
+                    "z": (0.85, 0.95),        # 示例：高度随机化，可与之前建议结合
+                },
+                "rot": {
+                    "roll": (-0.05, 0.05),   # 约 ±3°
+                    "pitch": (-0.05, 0.05),
+                    "yaw": (-0.1, 0.1),      # 约 ±6°
+                },
+            }, 
+            "velocity_range": {}
+        },
     )
 
     reset_joints = EventTerm(
@@ -189,7 +203,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
     # (2) Terminate if the robot falls
-    torso_height = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": 0.1})
+    torso_height = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": 0.6})
 
 
 ##

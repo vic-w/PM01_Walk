@@ -1,0 +1,1 @@
+python scripts\zero_agent.py --task=Template-Pm01-Walk-v0 --num_envs=20

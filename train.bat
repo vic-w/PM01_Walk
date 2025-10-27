@@ -1,0 +1,1 @@
+python scripts\rsl_rl\train.py --task=Template-Pm01-Walk-v0 --headless --max_iterations=30000

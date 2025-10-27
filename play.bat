@@ -1,0 +1,1 @@
+python scripts\rsl_rl\play.py --task=Template-Pm01-Walk-v0 --num_envs=20
