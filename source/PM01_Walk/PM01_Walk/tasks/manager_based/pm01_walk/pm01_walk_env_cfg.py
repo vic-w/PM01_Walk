@@ -29,6 +29,7 @@ from isaaclab.sensors import ContactSensorCfg
 
 #from isaaclab_assets.robots.cartpole import CARTPOLE_CFG  # isort:skip
 from PM01_Walk.assets.robots.pm01.pm01 import PM01_CFG
+from isaaclab.terrains import TerrainImporterCfg
 
 
 ##
@@ -41,9 +42,22 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
 
     # ground plane
-    ground = AssetBaseCfg(
+    # ground = AssetBaseCfg(
+    #     prim_path="/World/ground",
+    #     spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
+    # )
+    terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
+        terrain_type="plane",
+        terrain_generator=None,
+        max_init_terrain_level=5,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
     )
 
     # robot
@@ -60,7 +74,8 @@ class Pm01WalkSceneCfg(InteractiveSceneCfg):
 
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", 
-        history_length=3, 
+        update_period=0.005,
+        history_length=6, 
         track_air_time=True
     )
 
