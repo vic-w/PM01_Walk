@@ -19,7 +19,8 @@ from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 
-from . import mdp
+#from . import mdp
+from isaaclab_tasks.manager_based.locomotion.velocity import mdp
 from isaaclab.sensors import ContactSensorCfg
 
 ##
